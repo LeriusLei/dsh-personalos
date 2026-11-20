@@ -1,0 +1,8 @@
+# PersonalOS 工作台数据目录：任务总清单、今日任务、知识库都写在下面这个目录里。
+# 卸载工作台（或删除本条目）不会删除该目录下的用户数据；重新安装后会继续读取。
+# 想改用已有的 Obsidian 库，把 root 改成那个文件夹的绝对路径即可。
+- insert:
+    - id: personalos-workbench
+      name: dsh-personalos-workbench
+      config:
+        root: !!js dshHomePath('personalos-workbench')

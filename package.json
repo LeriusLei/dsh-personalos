@@ -1,0 +1,60 @@
+{
+  "name": "dsh-personalos-workbench",
+  "version": "1.1.0",
+  "description": "PersonalOS 个人任务管理与笔记收纳工作台：任务总清单、今日待办、随手采集、随笔自动分类沉淀为本地 Markdown 知识库。",
+  "keywords": [
+    "dsh-plugin",
+    "workbench",
+    "tasks",
+    "notes",
+    "obsidian",
+    "personalos",
+    "任务管理",
+    "笔记"
+  ],
+  "license": "MIT",
+  "author": "LeriusLei",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeriusLei/dsh-personalos.git"
+  },
+  "type": "module",
+  "main": "./dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dsh",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node --check dsh/index.js && node --check dsh/store.js && node --check lib/client.js && node scripts/check-package.mjs",
+    "test": "node test/store.test.mjs && node test/client.test.mjs && node test/server.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "dsh-desktop-workbenches"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.2 <5.0.0-0"
+  }
+}
