@@ -21,8 +21,11 @@ function loadModule() {
   sandbox.globalThis = sandbox;
   vm.runInNewContext(source, sandbox, { filename: 'lib/client.js' });
   assert.ok(definition, '客户端没有通过 __ModuleLoader__ 注册');
+  lastSandbox = sandbox;
   return definition;
 }
+
+let lastSandbox = null;
 
 function makeReact() {
   return {
@@ -120,4 +123,67 @@ test('面板首屏：无会话时业务可用，并给出开始对话入口', ()
   assert.ok(texts.includes('AI 对话'), '缺少 AI 对话入口');
   assert.ok(texts.some((text) => text.includes('开始一次 AI 对话')), '缺少开始对话引导');
   assert.ok(texts.includes('PersonalOS'), '缺少工作台标题');
+});
+
+// 回归：renderInline 曾复用带 g 标志的正则实例，renderToken 递归调用 renderInline
+// 时会把 lastIndex 重置，外层循环因此永不前进 → 点开任何带加粗/斜体的笔记整页卡死。
+test('Markdown 渲染：行内标记嵌套不会死循环', () => {
+  const definition = loadModule();
+  definition.factory(() => makeReact());
+  const hook = lastSandbox.__PERSONALOS_TEST_HOOK__;
+  const markdown = [
+    '# 标题',
+    '',
+    '这是**重点**内容，还有*斜体*、~~删除线~~和`代码`。',
+    '',
+    '- 第一项 **加粗**',
+    '- 第二项 *斜体*',
+    '',
+    '> 引用里的**重点**',
+    '',
+    '| 列一 | 列二 |',
+    '| --- | --- |',
+    '| **a** | b |',
+    '',
+    '![示意图](知识库示意.png)',
+    '![[知识库示意.png]]',
+  ].join('\n');
+  const start = Date.now();
+  const nodes = hook.renderMarkdown(markdown, '知识库/阅读与认知/示例.md');
+  assert.ok(Date.now() - start < 2000, 'Markdown 渲染耗时异常，疑似死循环');
+  const texts = [];
+  collectText(nodes, texts);
+  const joined = texts.join('');
+  assert.ok(joined.includes('重点'), '加粗文本丢失');
+  assert.ok(joined.includes('斜体'), '斜体文本丢失');
+  assert.ok(joined.includes('删除线'), '删除线文本丢失');
+  assert.ok(joined.includes('代码'), '行内代码丢失');
+  const images = [];
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (node.type === 'img') images.push(node.props.src);
+    (node.children || []).forEach(walk);
+  })(nodes);
+  assert.equal(images.length, 2, 'Markdown 图片没有渲染出来');
+  assert.ok(images.every((src) => src.includes('/asset?path=')), '图片地址没有指向资源路由');
+});
+
+test('frontmatter 拆分：标题与标签不进正文', () => {
+  const definition = loadModule();
+  definition.factory(() => makeReact());
+  const hook = lastSandbox.__PERSONALOS_TEST_HOOK__;
+  const parsed = hook.splitFrontmatter([
+    '---',
+    'title: 每周复盘的四个固定问题',
+    'date: 2026-11-20',
+    'category: 方法论',
+    'tags: [复盘, 周记]',
+    '---',
+    '',
+    '正文第一段',
+  ].join('\n'));
+  assert.equal(parsed.meta.title, '每周复盘的四个固定问题');
+  assert.deepEqual(Array.from(parsed.meta.tags), ['复盘', '周记']);
+  assert.equal(parsed.body.trim(), '正文第一段');
 });

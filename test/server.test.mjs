@@ -117,6 +117,47 @@ const tests = [
     },
   },
   {
+    label: 'POST /notes/upload 后 GET /asset 能读回图片',
+    async run() {
+      const routes = createHarness();
+      const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const uploaded = await (
+        await call(routes, '/notes/upload', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: '示例图片.png', data: png }),
+        })
+      ).json();
+      assert.equal(uploaded.ok, true);
+      assert.match(uploaded.path, /^知识库\/附件\//);
+
+      const bare = await call(routes, `/asset?path=${encodeURIComponent(uploaded.name)}`);
+      assert.equal(bare.status, 200);
+      assert.equal(bare.headers.get('content-type'), 'image/png');
+      const bytes = Buffer.from(await bare.arrayBuffer());
+      assert.deepEqual(bytes, Buffer.from(png, 'base64'));
+
+      const relative = await call(
+        routes,
+        `/asset?path=${encodeURIComponent(uploaded.name)}&note=${encodeURIComponent('知识库/随想/示例.md')}`,
+      );
+      assert.equal(relative.status, 200);
+
+      const missing = await call(routes, `/asset?path=${encodeURIComponent('不存在的图片.png')}`);
+      assert.equal(missing.status, 404);
+    },
+  },
+  {
+    label: 'GET /asset 拒绝非图片与越界路径',
+    async run() {
+      const routes = createHarness();
+      const script = await call(routes, `/asset?path=${encodeURIComponent('../../secret.txt')}`);
+      assert.equal(script.status, 400);
+      const md = await call(routes, `/asset?path=${encodeURIComponent('任务总清单/未完成.md')}`);
+      assert.equal(md.status, 400);
+    },
+  },
+  {
     label: '错误输入返回结构化错误',
     async run() {
       const routes = createHarness();

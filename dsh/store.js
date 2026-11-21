@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.3.1';
 export const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 // 工作台只读写自己配置的数据目录，没有硬编码路径。
@@ -638,6 +638,64 @@ export function saveAttachment({ name, dataBase64 }) {
   if (!existsSync(dirname(target))) mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, buffer);
   return { path: rel, name: rel.split('/').pop(), size: buffer.length };
+}
+
+// ── 图片附件：把笔记里的相对/绝对图片引用解析成数据目录内的真实文件 ──
+const MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+};
+function normalizeRel(value) {
+  const parts = [];
+  for (const segment of String(value).replace(/\\/g, '/').split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (!parts.length) return '';
+      parts.pop();
+      continue;
+    }
+    parts.push(segment);
+  }
+  return parts.join('/');
+}
+export function resolveAssetPath(relPath, notePath = '') {
+  if (!ROOT) throw new StoreError('工作台数据目录未配置。');
+  const raw = String(relPath ?? '').replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  if (!raw) throw new StoreError('图片路径不能为空', 400);
+  const ext = (raw.match(/\.[A-Za-z0-9]+$/) || [''])[0].toLowerCase();
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) throw new StoreError('只支持图片文件（png/jpg/webp/gif/svg）', 400);
+  const note = String(notePath ?? '').replace(/\\/g, '/');
+  const noteDir = note.includes('/') ? note.slice(0, note.lastIndexOf('/')) : '';
+  const candidates = [];
+  const push = (value) => { if (value && !candidates.includes(value)) candidates.push(value); };
+  if (!raw.includes('/')) {
+    push(`${ATTACH_ROOT}/${raw}`);
+    if (noteDir) push(`${noteDir}/${raw}`);
+    push(`${KNOWLEDGE_ROOT}/${raw}`);
+  } else if (/^[A-Za-z]:/.test(raw) || raw.startsWith('/')) {
+    push(raw);
+  } else {
+    if (noteDir) push(`${noteDir}/${raw}`);
+    push(raw.startsWith(`${KNOWLEDGE_ROOT}/`) ? raw : `${KNOWLEDGE_ROOT}/${raw}`);
+    push(raw);
+  }
+  const rootFile = resolve(ROOT);
+  for (const candidate of candidates) {
+    const normalized = normalizeRel(candidate);
+    if (!normalized) continue;
+    const file = resolve(abs(normalized));
+    if (file !== rootFile && !file.startsWith(`${rootFile}\\`) && !file.startsWith(`${rootFile}/`)) continue;
+    if (!existsSync(file)) continue;
+    const stat = statSync(file);
+    if (!stat.isFile()) continue;
+    return { path: normalized, file, mime, size: stat.size };
+  }
+  throw new StoreError('图片不存在', 404);
 }
 
 // ── 采集 ────────────────────────────────────────────────────

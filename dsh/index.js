@@ -1,6 +1,7 @@
 // PersonalOS 工作台 · 服务端入口
 // 只注册本工作台自己的本机接口（/api/personalos-workbench/ 前缀）。
 // 任务与笔记数据写在 cordis.patch.yml 配置的数据目录（config.root）里，卸载工作台不会删除这些数据。
+import { readFile } from 'node:fs/promises';
 import Schema from '@deepseek-ai/schemastery';
 import {
   StoreError,
@@ -30,6 +31,7 @@ import {
   saveNote,
   tidyMarkdown,
   toggleTask,
+  resolveAssetPath,
   listKnowledgeTree,
   VERSION,
   TIME_ZONE,
@@ -246,6 +248,21 @@ export function apply(ctx, config) {
     const body = await readBody(request);
     const result = await handleAction(body);
     return respond({ ok: true, ...result, data: buildOverview() });
+  });
+
+  // 笔记里的图片：按数据目录内的相对路径读回原始字节（只允许图片扩展名）。
+  registerRoute(ctx, '/asset', ['GET'], async (request) => {
+    const url = new URL(request.url);
+    const asset = resolveAssetPath(url.searchParams.get('path') ?? '', url.searchParams.get('note') ?? '');
+    const data = await readFile(asset.file);
+    return new Response(data, {
+      headers: {
+        'content-type': asset.mime,
+        'content-length': String(asset.size),
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    });
   });
 
   for (const [path, methods, handler] of [
